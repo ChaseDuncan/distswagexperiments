@@ -1,0 +1,9 @@
+name: pgmproject
+channels:
+  - defaults
+dependencies:
+  - torchvision
+  - pytorch
+  - cudatoolkit=10.1
+prefix: /home/cddunca2/anaconda3/envs/pgmproject
+

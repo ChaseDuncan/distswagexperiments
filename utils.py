@@ -37,6 +37,7 @@ def set_weights(model, vector, device=None):
   for param, sample in zip(model.parameters(), sample_list):
     param.data = sample.data
 
+
 def nll(outputs, labels):
   labels = labels.astype(int)
   idx = (np.arange(labels.size), labels)

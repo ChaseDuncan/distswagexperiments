@@ -10,25 +10,17 @@ import numpy as np
 
 from utils import *
 from tqdm import tqdm
-
 device = torch.device(f'cuda:{str(get_free_gpu())}')
 # The order of the epochs doesn't matter for SWAG-diagonal
 # since the mean is not weighted.
-N = 30
 num_classes = 10
-var_clamp = 1e-6 
-eps = 1e-16 
-model_name = 'baseline'
-#model_name = '000'
+eps = 1e-32
+#model_name = 'baseline'
 #model_name = 'dist-bayesian'
-#model_name = '5workers'
-#model_name = '1worker'
+model_name = '1worker'
 checkpoints = []
-num_checkpoints = None
-#num_checkpoints = 5
 cifar10_path = '/shared/mrfil-data/cddunca2/cifar10/'
 save_path = 'results/'+model_name
-
 
 transform_test = transforms.Compose(
         [
@@ -45,40 +37,27 @@ cifar10_test_loader = DataLoader(cifar10_test_dataset, shuffle=False, batch_size
 
 
 # Gather model checkpoints
-print('here')
-for root, dirs, filenames in os.walk(f'/shared/mrfil-data/cddunca2/pgmproject/{model_name}'):
+for root, dirs, filenames in os.walk('checkpoints/'+ model_name):
   for name in filenames:
     checkpoints.extend([os.path.join(root, name)])
 
-print('here')
-print(checkpoints)
 model = models.vgg16(num_classes=num_classes)
-mean = torch.zeros(sum(param.numel() for param in model.parameters()))
-sq_mean = mean.clone() 
-
-#import random
-#random.shuffle(checkpoints)
-
-# compute moments
-for n, checkpoint in enumerate(checkpoints):
-  print(f'Loading: {n} of {len(checkpoints)}')
-  chkpt = torch.load(checkpoint)
-  model.load_state_dict(chkpt['state_dict'])
-  mean, sq_mean = collect_model(model, mean, sq_mean, n)
 
 predictions = np.zeros((len(cifar10_test_loader.dataset), num_classes))
 targets = np.zeros(len(cifar10_test_loader.dataset))
 
 accuracy_per_epoch = []
+N = len(checkpoints)
 for i in range(N):
   print("%d/%d" % (i + 1, N))
-  sample = sample_post(mean, sq_mean)  
-  set_weights(model, sample, device) 
-  
   k = 0 
-  # Have to move data to device after setting the weights
+
+  chkpt = torch.load(checkpoints[i])
+
+  model.load_state_dict(chkpt['state_dict'])
   model.to(device)
   model.eval()
+
   for input, target in tqdm(cifar10_test_loader):
     input = input.to(device)
     output = model(input)
@@ -91,6 +70,7 @@ for i in range(N):
   
   accuracy =  np.mean(np.argmax(predictions, axis=1) == targets)
   accuracy_per_epoch.append(accuracy)
+  print(f'Model: {checkpoints[i]}')
   print("Accuracy:", accuracy)
   #nll is sum over entire dataset
   print("NLL:", nll(predictions / (i + 1), targets))
@@ -98,5 +78,3 @@ for i in range(N):
 predictions /= N
 accuracy_per_epoch = np.array(accuracy_per_epoch)
 entropies = -np.sum(np.log(predictions + eps) * predictions, axis=1)
-np.savez(save_path, entropies=entropies, predictions=predictions, 
-    targets=targets, accuracy_per_epoch=accuracy_per_epoch)

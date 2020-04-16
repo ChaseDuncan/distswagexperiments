@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import LambdaLR
 
 import utils
+from utils import *
 # Directory to retrieve or store CIFAR10 dataset. This directory will
 # be created if it doesn't exist already.
 model_name = 'baseline'
@@ -29,8 +30,7 @@ verbose = True
 
 lr_decay = lr_init / epochs
 
-device = torch.device('cuda')
-
+device = torch.device(f'cuda:{str(get_free_gpu())}')
 # Create data directories as necessary.
 if not os.path.exists(ckpt_dir):
   print('[INFO] Make dir %s' % ckpt_dir)
@@ -55,7 +55,7 @@ cifar10_train_dataset = datasets.CIFAR10(cifar10_path,
 
 cifar10_train_loader = DataLoader(cifar10_train_dataset, shuffle=True, batch_size=128)
 
-model = models.vgg16()
+model = models.vgg16(num_classes=10)
 model = model.to(device)
 
 optimizer = torch.optim.SGD(model.parameters(), lr=lr_init, 

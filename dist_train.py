@@ -1,5 +1,6 @@
 # python modules
 import os
+import copy
 
 # random modules
 from tqdm import tqdm
@@ -14,21 +15,23 @@ from torch.utils.data import DataLoader, random_split
 from torch.optim.lr_scheduler import LambdaLR
 
 import utils
+from utils import *
 # Directory to retrieve or store CIFAR10 dataset. This directory will
 # be created if it doesn't exist already.
 cifar10_path = '/shared/mrfil-data/cddunca2/cifar10/'
 epochs = 150
-swa_start = 125
+swa_start = 8
 swa_lr = 0.05
 lr_init = 0.1
+
+# TODO: figure out how to use momentum in the scheduler
 momentum = 0.0
-num_processes = 10
+num_processes = 15
 verbose = True
 
 lr_decay = lr_init / epochs
 
-device = torch.device('cuda')
-
+device = torch.device(f'cuda:{str(get_free_gpu())}')
 # Create data directories as necessary.
 
 if not os.path.exists(cifar10_path):
@@ -48,7 +51,12 @@ transform_train = transforms.Compose([
 cifar10_train_dataset = datasets.CIFAR10(cifar10_path, 
                       train=True, download=True, transform=transform_train)
 lengths = [len(cifar10_train_dataset) // num_processes] * num_processes
+# if there's a difference in the sum of the lengths of the split
+# and the length of the dataset, add it to the last length.
+lengths[-1]+=len(cifar10_train_dataset)-sum(lengths)
 cifar10_train_dataset_split = random_split(cifar10_train_dataset, lengths)
+# SWA lr dacay
+lr_lambda = lambda epoch: utils.schedule(epoch, swa_start, swa_lr, lr_init)
 
 def train(model, split, dataset, model_name='model', ckpt_dir='.'):
 
@@ -57,9 +65,6 @@ def train(model, split, dataset, model_name='model', ckpt_dir='.'):
   optimizer = torch.optim.SGD(model.parameters(), lr=lr_init, 
       momentum=momentum, weight_decay=1e-5)
 
-
-  # SWA lr dacay
-  lr_lambda = lambda epoch: utils.schedule(epoch, swa_start, swa_lr, lr_init)
   # learning rate scheduler
   scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda)
   # L2 regularized cross entropy loss
@@ -89,12 +94,13 @@ def train(model, split, dataset, model_name='model', ckpt_dir='.'):
       utils.save_checkpoint(ckpt_dir, epoch=epoch, name=model_name+f'{epoch:03}',
                             state_dict=model.state_dict(), optimizer=optimizer.state_dict())
     
+base_model = models.vgg16(num_classes=10)
 # Train a model for each split of data. Not sure how parameter initialization affects things.
 for split, cifar10_train_dataset in enumerate(cifar10_train_dataset_split):
-  model = models.vgg16()
+  model = copy.deepcopy(base_model)
   model = model.to(device)
   model_name = 'dist'+f'{split:03}'
-  ckpt_dir = 'checkpoints/dist-bayesian/'+ model_name + '/'
+  ckpt_dir = f'checkpoints/{num_processes}worker/'+ model_name + '/'
 
   if not os.path.exists(ckpt_dir):
     print('[INFO] Make dir %s' % ckpt_dir)

@@ -12,6 +12,7 @@ import torch
 import torchvision.models as models
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
+import torch.nn.functional as F
 
 from torch.utils.data import DataLoader, random_split
 from torch.optim.lr_scheduler import LambdaLR
@@ -21,7 +22,7 @@ from utils import *
 # Directory to retrieve or store CIFAR10 dataset. This directory will
 # be created if it doesn't exist already.
 
-parser = argparse.ArgumentParser(description='D-SWAG experiemnts') 
+parser = argparse.ArgumentParser(description='D-SWAG experiemnts training script.') 
 parser.add_argument('--dir', type=str, default=None, required=True, help='training directory (default: None)')
 parser.add_argument('--data_path', type=str, default='/shared/mrfil-data/cddunca2/cifar10/', metavar='PATH',
                     help='path to datasets location (default: /shared/mrfil-data/cddunca2/cifar10/)')
@@ -36,7 +37,7 @@ parser.add_argument('--momentum', type=float, default=0.0, metavar='momentum', h
 parser.add_argument('--model', type=str, default=None, required=True, metavar='MODEL',
                     help='model name (default: None)')
 args = parser.parse_args()
-
+num_classes = 10
 print('Preparing directory %s' % args.dir)
 os.makedirs(args.dir, exist_ok=True)
 with open(os.path.join(args.dir, 'command.sh'), 'w') as f:
@@ -75,7 +76,12 @@ cifar10_train_dataset_split = random_split(cifar10_train_dataset, lengths)
 # SWA lr dacay
 lr_lambda = lambda epoch: utils.schedule(epoch, args.swa_start, args.swa_lr, args.lr_init)
 
-def train(model, split, dataset, model_name='model', ckpt_dir='.'):
+    
+base_model = models.vgg16(num_classes=num_classes)
+
+def train(model, split, dataset, args, model_name='model', ckpt_dir='.'):
+  train_loss = []
+  train_eval = []
   cifar10_train_loader = DataLoader(dataset, shuffle=True, batch_size=args.batch_size)
 
   optimizer = torch.optim.SGD(model.parameters(), lr=args.lr_init, 
@@ -95,10 +101,7 @@ def train(model, split, dataset, model_name='model', ckpt_dir='.'):
     if epoch >= args.swa_start:
       sample = True 
 
-    if verbose:
-      cifar10_train_loader = tqdm(cifar10_train_loader)
-
-    for src, target in cifar10_train_loader:
+    for src, target in tqdm(cifar10_train_loader):
       optimizer.zero_grad()
       src, target = src.to(device), target.to(device)
       output = model(src)
@@ -106,24 +109,49 @@ def train(model, split, dataset, model_name='model', ckpt_dir='.'):
       total_loss += cur_loss
       cur_loss.backward()
       optimizer.step()
+  
+    train_loss.append(total_loss)
+    
+    model.eval()
+    predictions = np.zeros((len(cifar10_train_loader.dataset), num_classes))
+    targets = np.zeros(len(cifar10_train_loader.dataset))
+
+    k=0 
+    for input, target in tqdm(cifar10_train_loader):
+      input = input.to(device)
+      output = model(input)
+      with torch.no_grad():
+        predictions[k : k + input.size()[0]] += (
+          F.softmax(output, dim=1).cpu().numpy()
+        )
+      targets[k : (k + target.size(0))] = target.numpy()
+      k += input.size()[0]    
+    
+    accuracy =  np.mean(np.argmax(predictions, axis=1) == targets)
+    train_eval.append(accuracy)
+    print(f"Accuracy: {accuracy} Loss: {total_loss}")
 
     if sample:
       utils.save_checkpoint(ckpt_dir, epoch=epoch, name=model_name+f'{epoch:03}',
                             state_dict=model.state_dict(), optimizer=optimizer.state_dict())
-    
-base_model = models.vgg16(num_classes=10)
+  return train_loss, train_eval
+
 
 # Train a model for each split of data. Not sure how parameter initialization affects things.
 for split, cifar10_train_dataset in enumerate(cifar10_train_dataset_split):
   model = copy.deepcopy(base_model)
   model = model.to(device)
-  model_name = f'{split:03}'
-  ckpt_dir = f'{args.dir}/{model_name}/'
-
+  split_str= f'{split:03}'
+  ckpt_dir = f'{args.dir}/checkpoints/{split_str}/'
 
   if not os.path.exists(ckpt_dir):
     print('[INFO] Make dir %s' % ckpt_dir)
     os.makedirs(ckpt_dir)
  
-  train(model, split, cifar10_train_dataset, model_name, ckpt_dir)
+  train_loss, train_eval = train(model, split, cifar10_train_dataset, 
+      args, model_name=args.model, ckpt_dir=ckpt_dir)
+  save_path = f'{args.dir}/train-stats/{split_str}/{split_str}'
+  os.makedirs(save_path, exist_ok=True)
+  np.savez(save_path, train_loss=train_loss, train_eval=train_eval)
 
+  

@@ -1,6 +1,8 @@
 import os
 import torch
 import numpy as np
+from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import LambdaLR
 
 def moving_average(net1, net2, alpha=1):
   for param1, param2 in zip(net1.parameters(), net2.parameters()):
@@ -36,6 +38,65 @@ def set_weights(model, vector, device=None):
   sample_list = unflatten_like(vector, param_list)
   for param, sample in zip(model.parameters(), sample_list):
     param.data = sample.data
+
+def train(model, split, dataset, args, model_name='model', ckpt_dir='.'):
+  train_loss = []
+  train_eval = []
+  cifar10_train_loader = DataLoader(dataset, shuffle=True, batch_size=args.batch_size)
+
+  optimizer = torch.optim.SGD(model.parameters(), lr=args.lr_init, 
+      momentum=args.momentum, weight_decay=args.weight_decay)
+
+  # learning rate scheduler
+  scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda)
+
+  # L2 regularized cross entropy loss
+  loss = torch.nn.CrossEntropyLoss()
+
+  sample = False
+  for epoch in range(args.epochs):
+    total_loss = 0
+    model.train()
+
+    if epoch >= args.swa_start:
+      sample = True 
+
+    if verbose:
+      cifar10_train_loader = tqdm(cifar10_train_loader)
+
+    for src, target in cifar10_train_loader:
+      optimizer.zero_grad()
+      src, target = src.to(device), target.to(device)
+      output = model(src)
+      cur_loss = loss(output, target)
+      total_loss += cur_loss
+      cur_loss.backward()
+      optimizer.step()
+  
+    train_loss.append(total_loss)
+
+    model.eval()
+    k=0 
+    for input, target in cifar10_test_loader:
+      input = input.to(device)
+      output = model(input)
+      with torch.no_grad():
+        predictions[k : k + input.size()[0]] += (
+          F.softmax(output, dim=1).cpu().numpy()
+        )
+      targets[k : (k + target.size(0))] = target.numpy()
+      k += input.size()[0]    
+    
+    accuracy =  np.mean(np.argmax(predictions, axis=1) == targets)
+    train_eval.append(accuracy)
+    print("Accuracy:", accuracy)
+    #nll is sum over entire dataset
+    print("NLL:", nll(predictions / (i + 1), targets))
+
+    if sample:
+      utils.save_checkpoint(ckpt_dir, epoch=epoch, name=model_name+f'{epoch:03}',
+                            state_dict=model.state_dict(), optimizer=optimizer.state_dict())
+    return train_loss, train_eval
 
 
 def nll(outputs, labels):

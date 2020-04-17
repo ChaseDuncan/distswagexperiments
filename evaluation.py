@@ -14,20 +14,19 @@ from tqdm import tqdm
 device = torch.device(f'cuda:{str(get_free_gpu())}')
 # The order of the epochs doesn't matter for SWAG-diagonal
 # since the mean is not weighted.
+parser = argparse.ArgumentParser(description='D-SWAG experiemnts training script.') 
+parser.add_argument('--dir', type=str, default=None, required=True, help='training directory (default: None)')
+parser.add_argument('--data_path', type=str, default='/shared/mrfil-data/cddunca2/cifar10/', metavar='PATH',
+args = parser.parse_args()
+
 N = 30
 num_classes = 10
 var_clamp = 1e-6 
 eps = 1e-16 
-model_name = 'baseline'
-#model_name = '000'
-#model_name = 'dist-bayesian'
-#model_name = '5workers'
-#model_name = '1worker'
 checkpoints = []
 num_checkpoints = None
 #num_checkpoints = 5
-cifar10_path = '/shared/mrfil-data/cddunca2/cifar10/'
-save_path = 'results/'+model_name
+save_path = f'{args}/evaluation/'
 
 
 transform_test = transforms.Compose(
@@ -45,19 +44,15 @@ cifar10_test_loader = DataLoader(cifar10_test_dataset, shuffle=False, batch_size
 
 
 # Gather model checkpoints
-print('here')
 for root, dirs, filenames in os.walk(f'/shared/mrfil-data/cddunca2/pgmproject/{model_name}'):
   for name in filenames:
     checkpoints.extend([os.path.join(root, name)])
 
-print('here')
-print(checkpoints)
+assert len(checkpoints) > 0
+
 model = models.vgg16(num_classes=num_classes)
 mean = torch.zeros(sum(param.numel() for param in model.parameters()))
 sq_mean = mean.clone() 
-
-#import random
-#random.shuffle(checkpoints)
 
 # compute moments
 for n, checkpoint in enumerate(checkpoints):

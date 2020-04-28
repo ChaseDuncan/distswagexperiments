@@ -1,0 +1,8 @@
+
+
+1. implement utils.dist_train_epoch
+2. figure out batch norm updates
+3. figure out how to handle aggregation of deviations for
+   computing low rank matrix
+
+

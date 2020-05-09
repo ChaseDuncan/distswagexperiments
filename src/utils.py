@@ -40,7 +40,7 @@ def global_aggregate(global_optimizer, global_weights, local_updates, local_size
 				if global_optimizer == 'scaffold':
 					w[key] += torch.mul(torch.div(local_updates[i][key], len(local_sizes)), global_lr)
 				else:
-					w[key] += torch.mul(local_updates[i][key], local_sizes[i]/total_size)
+					w[key] += torch.mul(local_updates[i][key].to('cpu'), local_sizes[i]/total_size)
 
 		return w, v, m
 	
@@ -128,7 +128,7 @@ class DatasetSplit(Dataset):
 
 		return torch.tensor(image), torch.tensor(label)
 
-def test_inference(global_model, test_dataset, device, test_batch_size=128):
+def test_inference(global_model, test_dataset, device, criterion, test_batch_size=128):
 	"""
 	Evaluates the performance of the global model on hold-out dataset.
 
@@ -140,7 +140,8 @@ def test_inference(global_model, test_dataset, device, test_batch_size=128):
 	"""
 
 	test_loader = DataLoader(test_dataset, batch_size=test_batch_size, shuffle=False)
-	criterion = nn.NLLLoss().to(device)
+	#criterion = nn.NLLLoss().to(device)
+
 	global_model.eval()
 
 	loss, total, correct = 0.0, 0.0, 0.0
@@ -162,7 +163,7 @@ def test_inference(global_model, test_dataset, device, test_batch_size=128):
 	return correct/total, loss/total
 
 
-def predict(loader, model, verbose=False):
+def predict(loader, model, device, verbose=False):
     predictions = list()
     targets = list()
 
@@ -175,7 +176,7 @@ def predict(loader, model, verbose=False):
     with torch.no_grad():
         for input, target in loader:
             #input = input.cuda(non_blocking=True)
-            output = model(input)
+            output = model(input.to(device))
 
             batch_size = input.size(0)
             predictions.append(F.softmax(output, dim=1).cpu().numpy())
@@ -244,7 +245,7 @@ def bn_update(loader, model, verbose=False, subset=None, **kwargs):
 
             loader = tqdm.tqdm(loader, total=num_batches)
         for input, _ in loader:
-            #input = input.cuda(non_blocking=True)
+            input = input.cuda(non_blocking=True)
             input_var = torch.autograd.Variable(input)
             b = input_var.data.size(0)
 

@@ -10,7 +10,7 @@ from src.utils import DatasetSplit
 
 class LocalUpdate(object):
 	
-	def __init__(self, dataset, idxs, device, train_test_split=0.8,
+	def __init__(self, dataset, idxs, device, criterion, train_test_split=0.8,
 				train_batch_size=32, test_batch_size=32, attack=None,
 				num_classes=None):
 		"""
@@ -31,7 +31,8 @@ class LocalUpdate(object):
 		self.test_batch_size = test_batch_size
 		self.attack = attack
 		self.num_classes = num_classes
-		self.criterion = nn.NLLLoss().to(self.device) # Default criterion set to NLL loss function
+		#self.criterion = nn.NLLLoss().to(self.device) # Default criterion set to NLL loss function
+		self.criterion = criterion
 
 		self.train_test(dataset, list(idxs)) # Creating train and test splits
 
@@ -95,7 +96,7 @@ class LocalUpdate(object):
 			scheduler=torch.optim.lr_scheduler.LambdaLR(opt,lr_lambda=lambda1)
 							 
 		for epoch in range(epochs):
-
+			
 			
 			batch_loss = []
 			

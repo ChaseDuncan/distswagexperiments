@@ -8,13 +8,14 @@ import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Dataset
 from src.sampling import iid, non_iid
-from src.models import LR, MLP, CNNMnist
+from src.models import LR, MLP, CNNMnist,VGG, VGG16
 from src.utils import global_aggregate, network_parameters, test_inference
 from src.local_train import LocalUpdate
 from src.attacks import attack_updates
 from src.defense import defend_updates
 from src.utils import predict,bn_update
 from collections import OrderedDict, Counter
+import torchvision.models as models
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -25,7 +26,7 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument('--exp_name', type=str, default='', help="name of the experiment")
 parser.add_argument('--seed', type=int, default=0, help="seed for running the experiments")
-parser.add_argument('--data_source', type=str, default="MNIST", help="dataset to be used", choices=['MNIST'])
+parser.add_argument('--data_source', type=str, default="CIFAR10", help="dataset to be used", choices=['MNIST', 'CIFAR10'])
 parser.add_argument('--sampling', type=str, default="iid", help="sampling technique for client data", choices=['iid', 'non_iid'])
 parser.add_argument('--num_users', type=int, default=100, help="number of clients to create")
 parser.add_argument('--num_shards_user', type=int, default=2, help="number of classes to give to the user")
@@ -33,8 +34,9 @@ parser.add_argument('--train_test_split', type=float, default=1.0, help="train t
 parser.add_argument('--train_batch_size', type=int, default=32, help="batch size for client training")
 parser.add_argument('--test_batch_size', type=int, default=32, help="batch size for testing data")
 
-parser.add_argument('--model', type=str, default="MLP", help="network structure to be used for training", choices=['LR', 'MLP', 'CNN'])
-parser.add_argument('--device', type=str, default="cpu", help="device for Torch", choices=['cpu', 'gpu'])
+parser.add_argument('--model', type=str, default="VGG16", help="network structure to be used for training", choices=['LR', 'MLP', 'CNN', 'VGG16'])
+parser.add_argument('--criterion', type=str, default="crossentropy", help="evaluation criterion", choices=['crossentrooy', 'NLL'])
+parser.add_argument('--device', type=str, default="gpu", help="device for Torch", choices=['cpu', 'gpu'])
 parser.add_argument('--frac_clients', type=float, default=0.1, help="proportion of clients to use for local updates")
 parser.add_argument('--global_optimizer', type=str, default='fedavg', help="global optimizer to be used", choices=['fedavg', 'fedavgm', 'scaffold', 'fedadam', 'fedyogi'])
 parser.add_argument('--global_epochs', type=int, default=100, help="number of global federated rounds")
@@ -75,6 +77,10 @@ print(obj)
 np.random.seed(obj['seed'])
 torch.manual_seed(obj['seed'])
 
+if obj['criterion'] == "NLL":
+	criterion = torch.nn.NLLLoss() # Default criterion set to NLL loss function
+elif obj['criterion'] == "crossentropy":		
+	criterion = torch.nn.CrossEntropyLoss()
 ############################### Loading Dataset ###############################
 if obj['data_source'] == 'MNIST':
 	data_dir = 'data/'
@@ -84,8 +90,21 @@ if obj['data_source'] == 'MNIST':
 	])
 	train_dataset = datasets.MNIST(data_dir, train=True, download=True, transform=transformation)
 	test_dataset = datasets.MNIST(data_dir, train=False, download=True, transform=transformation)
-	print("Train and Test Sizes for %s - (%d, %d)"%(obj['data_source'], len(train_dataset), len(test_dataset)))
 	
+elif obj['data_source'] == 'CIFAR10':
+	#CIFAR10 dataset
+	data_dir = 'data/'
+	transformation = transforms.Compose([
+		transforms.RandomHorizontalFlip(),
+		transforms.Resize(32),
+		transforms.RandomCrop(32, padding=4),
+		transforms.ToTensor(),
+		transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+	])
+	train_dataset = datasets.CIFAR10(data_dir, train=True, download=True, transform=transformation)
+	test_dataset = datasets.CIFAR10(data_dir, train=False, download=True, transform=transformation)
+
+print("Train and Test Sizes for %s - (%d, %d)"%(obj['data_source'], len(train_dataset), len(test_dataset)))	
 ################################ Sampling Data ################################
 if obj['sampling'] == 'iid':
 	user_groups = iid(train_dataset, obj['num_users'], obj['seed'])
@@ -99,12 +118,15 @@ elif obj['model'] == 'MLP':
 	global_model = MLP(dim_in=28*28, dim_hidden=200, dim_out=10, seed=obj['seed'])
 elif obj['model'] == 'CNN' and obj['data_source'] == 'MNIST':
 	global_model = CNNMnist(obj['seed'])
+elif obj['model'] == 'VGG16':
+	global_model = models.vgg16(num_classes=10)
+
 else:
 	raise ValueError('Check the model and data source provided in the arguments.')
 
 print("Number of parameters in %s - %d."%(obj['model'], network_parameters(global_model)))
-
-global_model.to(obj['device'])
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+global_model.to(device)
 global_model.train()
 
 global_weights = global_model.state_dict() # Setting the initial global weights
@@ -154,10 +176,10 @@ for epoch in range(obj['global_epochs']):
 	for idx in idxs_users: # Training the local models
 
 		if obj['is_attack'] == 1 and obj['attack_type'] == 'label_flip' and idx in idxs_byz_users:
-			local_model = LocalUpdate(train_dataset, user_groups[idx], obj['device'], 
+			local_model = LocalUpdate(train_dataset, user_groups[idx], device, criterion, 
 					obj['train_test_split'], obj['train_batch_size'], obj['test_batch_size'], obj['attack_type'], num_classes)
 		else:
-			local_model = LocalUpdate(train_dataset, user_groups[idx], obj['device'], 
+			local_model = LocalUpdate(train_dataset, user_groups[idx], device, criterion,
 					obj['train_test_split'], obj['train_batch_size'], obj['test_batch_size'])
 
 		w, c_update, c_new, loss, local_size,_ = local_model.local_opt(obj['local_optimizer'], obj['local_lr'], 
@@ -223,7 +245,7 @@ for epoch in range(obj['global_epochs']):
 	# 									v, m, obj['eps'], epoch+1)
 	# global_model.load_state_dict(temp_g_weights1)
 	# global_model.eval()
-	# test_acc1, test_loss_value1 = test_inference(global_model, test_dataset, obj['device'], obj['test_batch_size'])
+	# test_acc1, test_loss_value1 = test_inference(global_model, test_dataset, device, obj['test_batch_size'])
 
 	# idxs_to_use = []
 	# for idx in range(len(local_updates)):
@@ -240,7 +262,7 @@ for epoch in range(obj['global_epochs']):
 		# 								v, m, obj['eps'], epoch+1)
 		# global_model.load_state_dict(temp_g_weights2)
 		# global_model.eval()
-		# test_acc2, test_loss_value2 = test_inference(global_model, test_dataset, obj['device'], obj['test_batch_size'])
+		# test_acc2, test_loss_value2 = test_inference(global_model, test_dataset, device, obj['test_batch_size'])
 
 		# if test_acc2 < test_acc1: # Without is less than with
 		# 	idxs_to_use.append(idx)
@@ -269,7 +291,7 @@ for epoch in range(obj['global_epochs']):
 		list_loss = []
 		for idx in range(obj['num_users']):
 
-			local_model = LocalUpdate(train_dataset, user_groups[idx], obj['device'], obj['train_test_split'], 
+			local_model = LocalUpdate(train_dataset, user_groups[idx], device,criterion, obj['train_test_split'], 
 								  obj['train_batch_size'], obj['test_batch_size'])
 			acc, loss = local_model.inference(global_model)
 			list_acc.append(acc)
@@ -279,7 +301,7 @@ for epoch in range(obj['global_epochs']):
 		train_accuracy.append(sum(list_acc)/len(list_acc))
 	
 	# Evaluation on the hold-out test set at central server
-	test_acc, test_loss_value = test_inference(global_model, test_dataset, obj['device'], obj['test_batch_size'])
+	test_acc, test_loss_value = test_inference(global_model, test_dataset, device,criterion, obj['test_batch_size'])
 	test_accuracy.append(test_acc)
 	test_loss.append(test_loss_value)
 
@@ -313,24 +335,24 @@ final_updates=[]
 test_acc_phase2=[]
 test_loss_value_phase2=[]
 local_model_phase2=copy.deepcopy(global_model)
-test_acc, test_loss_value = test_inference(local_model_phase2, test_dataset, obj['device'], obj['test_batch_size'])
+test_acc, test_loss_value = test_inference(local_model_phase2, test_dataset, device, criterion,obj['test_batch_size'])
 print('Initial Test accuracy is',test_acc)
 print('Starting Phase2')
 j=1
 for idx in idxs_users: # Training the local models
 	print(idx)
 	if obj['is_attack'] == 1 and obj['attack_type'] == 'label_flip' and idx in idxs_byz_users:
-		local_model = LocalUpdate(train_dataset, user_groups[idx], obj['device'], 
+		local_model = LocalUpdate(train_dataset, user_groups[idx], device, criterion,
 				obj['train_test_split'], obj['train_batch_size'], obj['test_batch_size'], obj['attack_type'], num_classes)
 	else:
-		local_model = LocalUpdate(train_dataset, user_groups[idx], obj['device'], 
+		local_model = LocalUpdate(train_dataset, user_groups[idx], device, criterion,
 				obj['train_test_split'], obj['train_batch_size'], obj['test_batch_size'])
 
 		w, c_update, c_new, loss, local_size,_ = local_model.local_opt(obj['local_optimizer'], obj['local_lr'], 
 												obj['local_epochs_sampling'], global_model,is_phase1, obj['momentum'], mus[idx], c[idx], c[-1], 
 												epoch+1, idx+1, obj['batch_print_frequency'])
 	local_model_phase2.load_state_dict(w)
-	test_acc, test_loss_value = test_inference(local_model_phase2, test_dataset, obj['device'], obj['test_batch_size'])
+	test_acc, test_loss_value = test_inference(local_model_phase2, test_dataset, device,criterion, obj['test_batch_size'])
 	test_acc_phase2.append(test_acc)
 	test_loss_value_phase2.append(test_loss_value)
 
@@ -351,9 +373,9 @@ mean = OrderedDict()
 std = OrderedDict()
 
 for k in global_weights.keys():
-	w_final[k] = torch.zeros(global_weights[k].shape, dtype=global_weights[k].dtype)
-	mean[k] = torch.zeros(global_weights[k].shape, dtype=global_weights[k].dtype)
-	std[k] = torch.zeros(global_weights[k].shape, dtype=global_weights[k].dtype)
+	w_final[k] = torch.zeros(global_weights[k].shape, dtype=global_weights[k].dtype).to(device)
+	mean[k] = torch.zeros(global_weights[k].shape, dtype=global_weights[k].dtype).to(device)
+	std[k] = torch.zeros(global_weights[k].shape, dtype=global_weights[k].dtype).to(device)
 total_size=sum(local_sizes)
 print('will start calculating mean and variance')
 for k in global_weights.keys():
@@ -368,7 +390,7 @@ swag_model1=copy.deepcopy(global_model)
 mean_model_test=copy.deepcopy(global_model)
 mean_model_test.load_state_dict(mean)
 
-test_acc, test_loss_value = test_inference(mean_model_test, test_dataset, obj['device'], obj['test_batch_size'])
+test_acc, test_loss_value = test_inference(mean_model_test, test_dataset, device,criterion, obj['test_batch_size'])
 print('Initial Test accuracy is',test_acc)
 print('Starting testing phase')
 
@@ -382,12 +404,12 @@ for j in range(len(final_updates)):
 	for k in swag_model.keys():
 		swag_model[k] = torch.normal(mean[k],std[k])
 	swag_model1.load_state_dict(swag_model)
-	test_acc, test_loss_value = test_inference(swag_model1, test_dataset, obj['device'], obj['test_batch_size'])
+	test_acc, test_loss_value = test_inference(swag_model1, test_dataset, device,criterion, obj['test_batch_size'])
 	print('Sampled model Test accuracy is',test_acc)
 	print('Updating batch norm')
 	#swag_model.sample(scale=0.5, cov=args.cov_mat)
 	bn_update(loader_train, swag_model1)
-	sample_res = predict(loader_test, swag_model1)
+	sample_res = predict(loader_test, swag_model1, device)
 	predictions += sample_res["predictions"]
 	targets = sample_res["targets"]
 	predictions /= len(final_updates)
@@ -399,10 +421,10 @@ print('Final Negative log likelihood is',swag_nlls)
 
 #	for epoch in range(obj['local_epoch'])
 #		if obj['is_attack'] == 1 and obj['attack_type'] == 'label_flip' and idx in idxs_byz_users:
-#			local_model = LocalUpdate(train_dataset, user_groups[idx], obj['device'], 
+#			local_model = LocalUpdate(train_dataset, user_groups[idx], device, 
 #					obj['train_test_split'], obj['train_batch_size'], obj['test_batch_size'], obj['attack_type'], num_classes)
 #		else:
-#			local_model = LocalUpdate(train_dataset, user_groups[idx], obj['device'], 
+#			local_model = LocalUpdate(train_dataset, user_groups[idx], device, 
 #					obj['train_test_split'], obj['train_batch_size'], obj['test_batch_size'])
 #
 #		w, c_update, c_new, loss, local_size = local_model.local_opt(obj['local_optimizer'], obj['local_lr'], 

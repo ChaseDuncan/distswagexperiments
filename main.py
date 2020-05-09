@@ -401,8 +401,18 @@ num_classes=10
 predictions = np.zeros((len(loader_test.dataset), num_classes))
 for j in range(len(final_updates)):
 	#print(j)
+	ep = torch.distributions.MultivariateNormal(torch.zeros(len(final_updates)), torch.diag(torch.ones(len(final_updates)))).rsample()
 	for k in swag_model.keys():
 		swag_model[k] = torch.normal(mean[k],std[k])
+		
+	for i in range(len(final_updates)):
+		for k in swag_model.keys():
+			swag_model[k] += final_updates[i][k]*ep[i]/np.float(len(final_updates))
+
+
+	
+
+
 	swag_model1.load_state_dict(swag_model)
 	test_acc, test_loss_value = test_inference(swag_model1, test_dataset, device,criterion, obj['test_batch_size'])
 	print('Sampled model Test accuracy is',test_acc)

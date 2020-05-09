@@ -407,7 +407,7 @@ for j in range(len(final_updates)):
 		
 	for i in range(len(final_updates)):
 		for k in swag_model.keys():
-			swag_model[k] += final_updates[i][k]*ep[i]/np.float(len(final_updates))
+			swag_model[k] += (final_updates[i][k]-mean[k])*ep[i]/np.float(len(final_updates))
 
 
 	

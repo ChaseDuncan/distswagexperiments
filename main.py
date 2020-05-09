@@ -360,8 +360,8 @@ for k in global_weights.keys():
 	for i in range(len(final_updates)):
 		a = torch.mul(final_updates[i][k], local_sizes[i]/total_size)
 		mean[k] = ((i)*mean[k]+final_updates[i][k])/(i+1)
-		std[k] =(i*std[k]+torch.mul(mean[k], mean[k]))/(i+1)
-		std[k]= (torch.abs(std[k] - torch.mul(mean[k], mean[k]))) ** 0.5
+		std[k] = (i*std[k]+torch.mul(final_updates[i][k], final_updates[i][k]))/(i+1)
+	std[k] = (torch.abs(std[k] - torch.mul(mean[k], mean[k]))) ** 0.5
 print('done!!')
 swag_model=copy.deepcopy(global_weights)
 swag_model1=copy.deepcopy(global_model)
@@ -380,7 +380,7 @@ predictions = np.zeros((len(loader_test.dataset), num_classes))
 for j in range(len(final_updates)):
 	#print(j)
 	for k in swag_model.keys():
-		swag_model[k] = torch.normal(mean[k],(0.5**0.5)*std[k])
+		swag_model[k] = torch.normal(mean[k],std[k])
 	swag_model1.load_state_dict(swag_model)
 	test_acc, test_loss_value = test_inference(swag_model1, test_dataset, obj['device'], obj['test_batch_size'])
 	print('Sampled model Test accuracy is',test_acc)

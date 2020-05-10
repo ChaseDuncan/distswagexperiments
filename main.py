@@ -59,6 +59,7 @@ parser.add_argument('--defense_type', type=str, default='median', help="aggregat
 parser.add_argument('--trim_ratio', type=float, default=0.1, help="proportion of updates to trim for trimmed mean")
 parser.add_argument('--multi_krum', type=int, default=5, help="number of clients to pick after krumming")
 parser.add_argument('--local_epochs_sampling', type=int, default=20, help="Number of local epochs without global aggregation (Phase2)")
+parser.add_argument('--rank_param', type=int, default=4, help="Low rank approxmation parameter")
 
 parser.add_argument('--batch_print_frequency', type=int, default=100, help="frequency after which batch results need to be printed to the console")
 parser.add_argument('--global_print_frequency', type=int, default=1, help="frequency after which global results need to be printed to the console")
@@ -73,6 +74,7 @@ with open('config.json') as f:
 obj = vars(obj)
 obj.update(json_vars)
 print(obj)
+K=obj['rank_param']
 
 np.random.seed(obj['seed'])
 torch.manual_seed(obj['seed'])
@@ -170,6 +172,7 @@ for epoch in range(obj['global_epochs']):
 	
 	np.random.seed(epoch) # Picking a fraction of users to choose for training
 	idxs_users = np.random.choice(range(obj['num_users']), max(int(obj['frac_clients']*obj['num_users']), 1), replace=False)
+	
 	
 	local_updates, local_losses, local_sizes, control_updates = [], [], [], []
 
@@ -394,6 +397,7 @@ test_acc, test_loss_value = test_inference(mean_model_test, test_dataset, device
 print('Initial Test accuracy is',test_acc)
 print('Starting testing phase')
 
+
 loader_train=torch.utils.data.DataLoader(train_dataset,batch_size=128,shuffle=True)
 loader_test=torch.utils.data.DataLoader(test_dataset,batch_size=128,shuffle=False)
 eps=1e-12
@@ -405,9 +409,11 @@ for j in range(len(final_updates)):
 	for k in swag_model.keys():
 		swag_model[k] = torch.normal(mean[k],std[k])
 		
-	for i in range(len(final_updates)):
-		for k in swag_model.keys():
-			swag_model[k] += (final_updates[i][k]-mean[k])*ep[i]/np.float(len(final_updates))
+	if K != 0 and K < len(final_updates):
+		print('Sampling low-rank matrix')
+		for i in range(len(final_updates)-K,len(final_updates),1):
+			for k in swag_model.keys():
+				swag_model[k] += (final_updates[i][k]-mean[k])*ep[i]/np.float(K-1)/np.sqrt(2)
 
 
 	

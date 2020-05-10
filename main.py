@@ -3,6 +3,7 @@ import pandas as pd
 import copy
 import argparse
 import json
+import time
 
 import torch
 from torchvision import datasets, transforms
@@ -68,7 +69,7 @@ parser.add_argument('--threshold_test_metric', type=float, default=0.9, help="th
 obj = parser.parse_args()
 
 with open('config.json') as f:
-	json_vars = json.load(f)
+  json_vars = json.load(f)
 
 obj = vars(obj)
 obj.update(json_vars)
@@ -78,51 +79,51 @@ np.random.seed(obj['seed'])
 torch.manual_seed(obj['seed'])
 
 if obj['criterion'] == "NLL":
-	criterion = torch.nn.NLLLoss() # Default criterion set to NLL loss function
-elif obj['criterion'] == "crossentropy":		
-	criterion = torch.nn.CrossEntropyLoss()
+  criterion = torch.nn.NLLLoss() # Default criterion set to NLL loss function
+elif obj['criterion'] == "crossentropy":    
+  criterion = torch.nn.CrossEntropyLoss()
 ############################### Loading Dataset ###############################
 if obj['data_source'] == 'MNIST':
-	data_dir = 'data/'
-	transformation = transforms.Compose([
-		transforms.ToTensor(), 
-		transforms.Normalize((0.1307,), (0.3081,))
-	])
-	train_dataset = datasets.MNIST(data_dir, train=True, download=True, transform=transformation)
-	test_dataset = datasets.MNIST(data_dir, train=False, download=True, transform=transformation)
-	
+  data_dir = 'data/'
+  transformation = transforms.Compose([
+    transforms.ToTensor(), 
+    transforms.Normalize((0.1307,), (0.3081,))
+  ])
+  train_dataset = datasets.MNIST(data_dir, train=True, download=True, transform=transformation)
+  test_dataset = datasets.MNIST(data_dir, train=False, download=True, transform=transformation)
+  
 elif obj['data_source'] == 'CIFAR10':
-	#CIFAR10 dataset
-	data_dir = 'data/'
-	transformation = transforms.Compose([
-		transforms.RandomHorizontalFlip(),
-		transforms.Resize(32),
-		transforms.RandomCrop(32, padding=4),
-		transforms.ToTensor(),
-		transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-	])
-	train_dataset = datasets.CIFAR10(data_dir, train=True, download=True, transform=transformation)
-	test_dataset = datasets.CIFAR10(data_dir, train=False, download=True, transform=transformation)
+  #CIFAR10 dataset
+  data_dir = 'data/'
+  transformation = transforms.Compose([
+    transforms.RandomHorizontalFlip(),
+    transforms.Resize(32),
+    transforms.RandomCrop(32, padding=4),
+    transforms.ToTensor(),
+    transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+  ])
+  train_dataset = datasets.CIFAR10(data_dir, train=True, download=True, transform=transformation)
+  test_dataset = datasets.CIFAR10(data_dir, train=False, download=True, transform=transformation)
 
-print("Train and Test Sizes for %s - (%d, %d)"%(obj['data_source'], len(train_dataset), len(test_dataset)))	
+print("Train and Test Sizes for %s - (%d, %d)"%(obj['data_source'], len(train_dataset), len(test_dataset))) 
 ################################ Sampling Data ################################
 if obj['sampling'] == 'iid':
-	user_groups = iid(train_dataset, obj['num_users'], obj['seed'])
+  user_groups = iid(train_dataset, obj['num_users'], obj['seed'])
 else:
-	user_groups = non_iid(train_dataset, obj['num_users'], obj['num_shards_user'], obj['seed'])
+  user_groups = non_iid(train_dataset, obj['num_users'], obj['num_shards_user'], obj['seed'])
 
 ################################ Defining Model ################################
 if obj['model'] == 'LR':
-	global_model = LR(dim_in=28*28, dim_out=10, seed=obj['seed'])
+  global_model = LR(dim_in=28*28, dim_out=10, seed=obj['seed'])
 elif obj['model'] == 'MLP':
-	global_model = MLP(dim_in=28*28, dim_hidden=200, dim_out=10, seed=obj['seed'])
+  global_model = MLP(dim_in=28*28, dim_hidden=200, dim_out=10, seed=obj['seed'])
 elif obj['model'] == 'CNN' and obj['data_source'] == 'MNIST':
-	global_model = CNNMnist(obj['seed'])
+  global_model = CNNMnist(obj['seed'])
 elif obj['model'] == 'VGG16':
-	global_model = models.vgg16(num_classes=10)
+  global_model = models.vgg16(num_classes=10)
 
 else:
-	raise ValueError('Check the model and data source provided in the arguments.')
+  raise ValueError('Check the model and data source provided in the arguments.')
 
 print("Number of parameters in %s - %d."%(obj['model'], network_parameters(global_model)))
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -140,15 +141,15 @@ m = OrderedDict()
 c = [OrderedDict() for i in range(len(user_groups) + 1)]
 
 for k in global_weights.keys():
-	v[k] = torch.zeros(global_weights[k].shape, dtype=global_weights[k].dtype)
-	m[k] = torch.zeros(global_weights[k].shape, dtype=global_weights[k].dtype)
-	for idx, i in enumerate(c):
-		c[idx][k] = torch.zeros(global_weights[k].shape, dtype=global_weights[k].dtype)
+  v[k] = torch.zeros(global_weights[k].shape, dtype=global_weights[k].dtype)
+  m[k] = torch.zeros(global_weights[k].shape, dtype=global_weights[k].dtype)
+  for idx, i in enumerate(c):
+    c[idx][k] = torch.zeros(global_weights[k].shape, dtype=global_weights[k].dtype)
 
 ################################ Defining Model ################################
 
 with open('results/%s_input.json'%(obj['exp_name']), 'w') as f:
-	json.dump(obj, f, indent=4)
+  json.dump(obj, f, indent=4)
 
 train_loss_updated = []
 train_loss_all = []
@@ -161,172 +162,97 @@ num_classes = 10 # MNIST
 
 # Picking byzantine users (they would remain constant throughout the training procedure)
 if obj['is_attack'] == 1:
-	idxs_byz_users = np.random.choice(range(obj['num_users']), max(int(obj['frac_byz_clients']*obj['num_users']), 1), replace=False)
+  idxs_byz_users = np.random.choice(range(obj['num_users']), max(int(obj['frac_byz_clients']*obj['num_users']), 1), replace=False)
 is_phase1=True
+ep_times = []
 for epoch in range(obj['global_epochs']):
+  ################################# Client Sampling & Local Training #################################
+  global_model.train()
+  
+  np.random.seed(epoch) # Picking a fraction of users to choose for training
+  idxs_users = np.random.choice(range(obj['num_users']), max(int(obj['frac_clients']*obj['num_users']), 1), replace=False)
+  
+  local_updates, local_losses, local_sizes, control_updates = [], [], [], []
+  train_time_per_process = []
+  for idx in idxs_users: # Training the local models
+    # start training timer for process
+    pr_time = time.time()
+    local_model = LocalUpdate(train_dataset, user_groups[idx], device, criterion,
+        obj['train_test_split'], obj['train_batch_size'], obj['test_batch_size'])
+    w, c_update, c_new, loss, local_size,_ = local_model.local_opt(obj['local_optimizer'], obj['local_lr'], 
+                        obj['local_epochs'], global_model,is_phase1, obj['momentum'], mus[idx], c[idx], c[-1], 
+                        epoch+1, idx+1, obj['batch_print_frequency'])
 
-	################################# Client Sampling & Local Training #################################
-	global_model.train()
-	
-	np.random.seed(epoch) # Picking a fraction of users to choose for training
-	idxs_users = np.random.choice(range(obj['num_users']), max(int(obj['frac_clients']*obj['num_users']), 1), replace=False)
-	
-	local_updates, local_losses, local_sizes, control_updates = [], [], [], []
+    c[idx] = c_new # Updating the control variates in the main list for that client
+        
+    local_updates.append(copy.deepcopy(w))
+    control_updates.append(c_update)
+    local_losses.append(loss)
+    local_sizes.append(local_size)
+    train_time_per_process.append(time.time()-pr_time)
+  # start aggregation timer
+  agg_time = time.time() 
+  train_loss_updated.append(sum(local_losses)/len(local_losses)) # Appending global training loss
+  #gw = copy.deepcopy(global_weights)
+  #global_model.load_state_dict(gw) # [i for idx, i in enumerate(local_updates) if idx in idxs_to_use]
+  global_model.load_state_dict(global_weights) 
+  global_weights, v, m = global_aggregate(obj['global_optimizer'], global_weights, local_updates, 
+                    local_sizes, obj['global_lr'], obj['beta1'], obj['beta2'],
+                    v, m, obj['eps'], epoch+1)
+  global_model.load_state_dict(global_weights)
+  # compute time cost of epoch
+  ep_time = (time.time() - agg_time) + max(train_time_per_process)
+  ep_times.append(ep_time)
 
-	for idx in idxs_users: # Training the local models
+  if obj['local_optimizer'] == 'scaffold': # Need to update the server control variate
+    for key in c[-1].keys():
+      for i in control_updates:
+        c[-1][key] += torch.div(i[key], len(user_groups))
 
-		if obj['is_attack'] == 1 and obj['attack_type'] == 'label_flip' and idx in idxs_byz_users:
-			local_model = LocalUpdate(train_dataset, user_groups[idx], device, criterion, 
-					obj['train_test_split'], obj['train_batch_size'], obj['test_batch_size'], obj['attack_type'], num_classes)
-		else:
-			local_model = LocalUpdate(train_dataset, user_groups[idx], device, criterion,
-					obj['train_test_split'], obj['train_batch_size'], obj['test_batch_size'])
+  ######################################### Model Evaluation #########################################
+  global_model.eval()
+  
+  if obj['train_test_split'] != 1.0:
+    list_acc = []
+    list_loss = []
+    for idx in range(obj['num_users']):
 
-		w, c_update, c_new, loss, local_size,_ = local_model.local_opt(obj['local_optimizer'], obj['local_lr'], 
-												obj['local_epochs'], global_model,is_phase1, obj['momentum'], mus[idx], c[idx], c[-1], 
-												epoch+1, idx+1, obj['batch_print_frequency'])
+      local_model = LocalUpdate(train_dataset, user_groups[idx], device,criterion, obj['train_test_split'], 
+                  obj['train_batch_size'], obj['test_batch_size'])
+      acc, loss = local_model.inference(global_model)
+      list_acc.append(acc)
+      list_loss.append(loss)
 
-		c[idx] = c_new # Updating the control variates in the main list for that client
-		
-		local_updates.append(copy.deepcopy(w))
-		control_updates.append(c_update)
-		local_losses.append(loss)
-		local_sizes.append(local_size)
-		#print(idx, np.unique(np.array([train_dataset.targets.numpy()[i] for i in user_groups[idx]])))
+    train_loss_all.append(sum(list_loss)/len(list_loss))
+    train_accuracy.append(sum(list_acc)/len(list_acc))
+  
+  # Evaluation on the hold-out test set at central server
+  test_acc, test_loss_value = test_inference(global_model, test_dataset, device,criterion, obj['test_batch_size'])
+  test_accuracy.append(test_acc)
+  test_loss.append(test_loss_value)
 
-	train_loss_updated.append(sum(local_losses)/len(local_losses)) # Appending global training loss
+  if (epoch+1) % obj['global_print_frequency'] == 0 or (epoch+1) == obj['global_epochs']:
+    msg = '| Global Round : {0:>4} | TeLoss - {1:>6.4f}, TeAcc - {2:>6.2f} %, TrLoss (U) - {3:>6.4f}'
 
-	################################# Attack on the local weights #################################
+    if obj['train_test_split'] != 1.0:
+      msg = 'TrLoss (A) - {4:>6.4f} % , TrAcc - {5:>6.2f} %'
+      print(msg.format(epoch+1, test_loss[-1], test_accuracy[-1]*100.0, train_loss_updated[-1], 
+              train_loss_all[-1], train_accuracy[-1]*100.0))
+    else:
+      print(msg.format(epoch+1, test_loss[-1], test_accuracy[-1]*100.0, train_loss_updated[-1]))
 
-	if obj['is_attack'] == 1:
+  if (epoch+1) % obj['global_store_frequency'] == 0  or (epoch+1) == obj['global_epochs'] or test_accuracy[-1] >= obj['threshold_test_metric']:
+    if obj['train_test_split'] != 1.0:
+      out_arr = pd.DataFrame(np.array([list(range(epoch+1)), train_accuracy, test_accuracy, train_loss_updated, train_loss_all, test_loss]).T,
+                columns=['epoch', 'train_acc', 'test_acc', 'train_loss_updated', 'train_loss_all', 'test_loss'])
+    else:
+      out_arr = pd.DataFrame(np.array([list(range(epoch+1)), test_accuracy, train_loss_updated, test_loss]).T,
+        columns=['epoch', 'test_acc', 'train_loss_updated', 'test_loss'])
+    out_arr.to_csv('results/%s_output.csv'%(obj['exp_name']), index=False)
 
-		local_benign_updates = [i for idx, i in enumerate(local_updates) if idxs_users[idx] not in idxs_byz_users]
-		local_byz_updates = [i for idx, i in enumerate(local_updates) if idxs_users[idx] in idxs_byz_users]
-		local_byz_sizes = [i for idx, i in enumerate(local_sizes) if idxs_users[idx] in idxs_byz_users]
-
-		if len(local_byz_updates) > 0:
-
-			if obj['attack_type'] in ['fall', 'little']:
-
-				byz_update, _, _ = attack_updates(global_weights, obj['defense_type'], obj['attack_type'], local_byz_updates, 
-													local_byz_sizes, obj['little_std'], obj['fall_eps'])
-				for i in range(len(local_byz_updates)):
-					local_benign_updates.append(copy.deepcopy(byz_update)) # Setting same update for all byzantine workers
-
-			elif obj['attack_type'] == 'gaussian':
-
-				byz_update, m, s = attack_updates(global_weights, obj['defense_type'], obj['attack_type'], 
-													local_byz_updates, local_byz_sizes, obj['little_std'], obj['fall_eps'])
-				for i in range(len(local_byz_updates)):
-					for k in byz_update.keys():
-						local_byz_updates[i][k] = torch.normal(m[k], s[k])
-					local_benign_updates.append(copy.deepcopy(local_byz_updates[i]))
-
-			elif obj['attack_type'] == 'label_flip':
-				pass
-
-			else:
-				raise ValueError("Please specify a valid attack_type from ['fall' ,'little', 'gaussian'].")
-
-		local_updates = local_benign_updates
-
-	#################################### Defense BEFORE Aggregation ####################################
-
-	if obj['is_defense'] == 1:
-
-		local_updates, local_sizes = defend_updates(local_updates, local_sizes, obj['defense_type'], obj['trim_ratio'], obj['multi_krum'])
-
-	################################# Aggregation of the local weights #################################
-
-	# Marginal Computation
-	gw = copy.deepcopy(global_weights)
-	# temp_g_weights1, v, m = global_aggregate(obj['global_optimizer'], gw, local_updates, 
-	# 									local_sizes, obj['global_lr'], obj['beta1'], obj['beta2'],
-	# 									v, m, obj['eps'], epoch+1)
-	# global_model.load_state_dict(temp_g_weights1)
-	# global_model.eval()
-	# test_acc1, test_loss_value1 = test_inference(global_model, test_dataset, device, obj['test_batch_size'])
-
-	# idxs_to_use = []
-	# for idx in range(len(local_updates)):
-
-	# 	curr_dist = [torch.norm(local_updates[idx][k]).numpy().reshape(-1, 1)[0][0] for k in gw.keys()]
-	# 	#print(idxs_users[idx], curr_dist)
-
-	# 	ee = mus[idxs_users[idx]]
-	# 	mus[idxs_users[idx]] += (obj['mu'])*np.linalg.norm(curr_dist)
-	# 	print("Mu for the client %d changed from %f to %f."%(idxs_users[idx], ee, mus[idxs_users[idx]]))
-
-		# temp_g_weights2, v, m = global_aggregate(obj['global_optimizer'], gw, local_updates[:idx] + local_updates[idx+1:],
-		# 								local_sizes, obj['global_lr'], obj['beta1'], obj['beta2'],
-		# 								v, m, obj['eps'], epoch+1)
-		# global_model.load_state_dict(temp_g_weights2)
-		# global_model.eval()
-		# test_acc2, test_loss_value2 = test_inference(global_model, test_dataset, device, obj['test_batch_size'])
-
-		# if test_acc2 < test_acc1: # Without is less than with
-		# 	idxs_to_use.append(idx)
-		# else:
-		# 	ee = mus[idxs_users[idx]]
-		# 	mus[idxs_users[idx]] += (obj['mu']*10.0)*(test_acc2 - test_acc1)*100.0
-		# 	print("Mu for the client %d changed from %f to %f."%(idxs_users[idx], ee, mus[idxs_users[idx]]))
-		#print("Marginal with and without client %d - %.2f %% and %.2f %%."%(idxs_users[idx], test_acc1*100.0, test_acc2*100.0))
-
-	global_model.load_state_dict(gw) # [i for idx, i in enumerate(local_updates) if idx in idxs_to_use]
-	global_weights, v, m = global_aggregate(obj['global_optimizer'], global_weights, local_updates, 
-										local_sizes, obj['global_lr'], obj['beta1'], obj['beta2'],
-										v, m, obj['eps'], epoch+1)
-	global_model.load_state_dict(global_weights)
-
-	if obj['local_optimizer'] == 'scaffold': # Need to update the server control variate
-		for key in c[-1].keys():
-			for i in control_updates:
-				c[-1][key] += torch.div(i[key], len(user_groups))
-
-	######################################### Model Evaluation #########################################
-	global_model.eval()
-	
-	if obj['train_test_split'] != 1.0:
-		list_acc = []
-		list_loss = []
-		for idx in range(obj['num_users']):
-
-			local_model = LocalUpdate(train_dataset, user_groups[idx], device,criterion, obj['train_test_split'], 
-								  obj['train_batch_size'], obj['test_batch_size'])
-			acc, loss = local_model.inference(global_model)
-			list_acc.append(acc)
-			list_loss.append(loss)
-
-		train_loss_all.append(sum(list_loss)/len(list_loss))
-		train_accuracy.append(sum(list_acc)/len(list_acc))
-	
-	# Evaluation on the hold-out test set at central server
-	test_acc, test_loss_value = test_inference(global_model, test_dataset, device,criterion, obj['test_batch_size'])
-	test_accuracy.append(test_acc)
-	test_loss.append(test_loss_value)
-
-	if (epoch+1) % obj['global_print_frequency'] == 0 or (epoch+1) == obj['global_epochs']:
-		msg = '| Global Round : {0:>4} | TeLoss - {1:>6.4f}, TeAcc - {2:>6.2f} %, TrLoss (U) - {3:>6.4f}'
-
-		if obj['train_test_split'] != 1.0:
-			msg = 'TrLoss (A) - {4:>6.4f} % , TrAcc - {5:>6.2f} %'
-			print(msg.format(epoch+1, test_loss[-1], test_accuracy[-1]*100.0, train_loss_updated[-1], 
-							train_loss_all[-1], train_accuracy[-1]*100.0))
-		else:
-			print(msg.format(epoch+1, test_loss[-1], test_accuracy[-1]*100.0, train_loss_updated[-1]))
-
-	if (epoch+1) % obj['global_store_frequency'] == 0  or (epoch+1) == obj['global_epochs'] or test_accuracy[-1] >= obj['threshold_test_metric']:
-		if obj['train_test_split'] != 1.0:
-			out_arr = pd.DataFrame(np.array([list(range(epoch+1)), train_accuracy, test_accuracy, train_loss_updated, train_loss_all, test_loss]).T,
-								columns=['epoch', 'train_acc', 'test_acc', 'train_loss_updated', 'train_loss_all', 'test_loss'])
-		else:
-			out_arr = pd.DataFrame(np.array([list(range(epoch+1)), test_accuracy, train_loss_updated, test_loss]).T,
-				columns=['epoch', 'test_acc', 'train_loss_updated', 'test_loss'])
-		out_arr.to_csv('results/%s_output.csv'%(obj['exp_name']), index=False)
-
-	if test_accuracy[-1] >= obj['threshold_test_metric']:
-		print("Terminating as desired threshold for test metric reached...")
-		break
+  if test_accuracy[-1] >= obj['threshold_test_metric']:
+    print("Terminating as desired threshold for test metric reached...")
+    break
 
  
 is_phase1=False
@@ -340,50 +266,46 @@ print('Initial Test accuracy is',test_acc)
 print('Starting Phase2')
 j=1
 for idx in idxs_users: # Training the local models
-	print(idx)
-	if obj['is_attack'] == 1 and obj['attack_type'] == 'label_flip' and idx in idxs_byz_users:
-		local_model = LocalUpdate(train_dataset, user_groups[idx], device, criterion,
-				obj['train_test_split'], obj['train_batch_size'], obj['test_batch_size'], obj['attack_type'], num_classes)
-	else:
-		local_model = LocalUpdate(train_dataset, user_groups[idx], device, criterion,
-				obj['train_test_split'], obj['train_batch_size'], obj['test_batch_size'])
+  print(idx)
+  local_model = LocalUpdate(train_dataset, user_groups[idx], device, criterion,
+      obj['train_test_split'], obj['train_batch_size'], obj['test_batch_size'])
 
-		w, c_update, c_new, loss, local_size,_ = local_model.local_opt(obj['local_optimizer'], obj['local_lr'], 
-												obj['local_epochs_sampling'], global_model,is_phase1, obj['momentum'], mus[idx], c[idx], c[-1], 
-												epoch+1, idx+1, obj['batch_print_frequency'])
-	local_model_phase2.load_state_dict(w)
-	test_acc, test_loss_value = test_inference(local_model_phase2, test_dataset, device,criterion, obj['test_batch_size'])
-	test_acc_phase2.append(test_acc)
-	test_loss_value_phase2.append(test_loss_value)
+  w, c_update, c_new, loss, local_size,_ = local_model.local_opt(obj['local_optimizer'], obj['local_lr'], 
+                      obj['local_epochs_sampling'], global_model,is_phase1, obj['momentum'], mus[idx], c[idx], c[-1], 
+                      epoch+1, idx+1, obj['batch_print_frequency'])
+  local_model_phase2.load_state_dict(w)
+  test_acc, test_loss_value = test_inference(local_model_phase2, test_dataset, device,criterion, obj['test_batch_size'])
+  test_acc_phase2.append(test_acc)
+  test_loss_value_phase2.append(test_loss_value)
 
-	if j % obj['global_print_frequency'] == 0 or (epoch+1) == obj['global_epochs']:
-		msg = '| Global Round : {0:>4} | TeLoss - {1:>6.4f}, TeAcc - {2:>6.2f} %'
+  if j % obj['global_print_frequency'] == 0 or (epoch+1) == obj['global_epochs']:
+    msg = '| Global Round : {0:>4} | TeLoss - {1:>6.4f}, TeAcc - {2:>6.2f} %'
 
-		if obj['train_test_split'] != 1.0:
-			msg = 'TrLoss (A) - {4:>6.4f} % , TrAcc - {5:>6.2f} %'
-			print(msg.format(epoch+1, test_loss[-1], test_accuracy[-1]*100.0, train_loss_updated[-1], 
-							train_loss_all[-1], train_accuracy[-1]*100.0))
-		else:
-			print(msg.format(j, test_loss_value_phase2[-1], test_acc_phase2[-1]*100.0))
-	j+=1
+    if obj['train_test_split'] != 1.0:
+      msg = 'TrLoss (A) - {4:>6.4f} % , TrAcc - {5:>6.2f} %'
+      print(msg.format(epoch+1, test_loss[-1], test_accuracy[-1]*100.0, train_loss_updated[-1], 
+              train_loss_all[-1], train_accuracy[-1]*100.0))
+    else:
+      print(msg.format(j, test_loss_value_phase2[-1], test_acc_phase2[-1]*100.0))
+  j+=1
 
-	final_updates.append(copy.deepcopy(w))
+  final_updates.append(copy.deepcopy(w))
 w_final = OrderedDict()
 mean = OrderedDict()
 std = OrderedDict()
 
 for k in global_weights.keys():
-	w_final[k] = torch.zeros(global_weights[k].shape, dtype=global_weights[k].dtype).to(device)
-	mean[k] = torch.zeros(global_weights[k].shape, dtype=global_weights[k].dtype).to(device)
-	std[k] = torch.zeros(global_weights[k].shape, dtype=global_weights[k].dtype).to(device)
+  w_final[k] = torch.zeros(global_weights[k].shape, dtype=global_weights[k].dtype).to(device)
+  mean[k] = torch.zeros(global_weights[k].shape, dtype=global_weights[k].dtype).to(device)
+  std[k] = torch.zeros(global_weights[k].shape, dtype=global_weights[k].dtype).to(device)
 total_size=sum(local_sizes)
 print('will start calculating mean and variance')
 for k in global_weights.keys():
-	for i in range(len(final_updates)):
-		a = torch.mul(final_updates[i][k], local_sizes[i]/total_size)
-		mean[k] = ((i)*mean[k]+final_updates[i][k])/(i+1)
-		std[k] = (i*std[k]+torch.mul(final_updates[i][k], final_updates[i][k]))/(i+1)
-	std[k] = (torch.abs(std[k] - torch.mul(mean[k], mean[k]))) ** 0.5
+  for i in range(len(final_updates)):
+    a = torch.mul(final_updates[i][k], local_sizes[i]/total_size)
+    mean[k] = ((i)*mean[k]+final_updates[i][k])/(i+1)
+    std[k] = (i*std[k]+torch.mul(final_updates[i][k], final_updates[i][k]))/(i+1)
+  std[k] = (torch.abs(std[k] - torch.mul(mean[k], mean[k]))) ** 0.5
 print('done!!')
 swag_model=copy.deepcopy(global_weights)
 swag_model1=copy.deepcopy(global_model)
@@ -400,40 +322,40 @@ eps=1e-12
 num_classes=10
 predictions = np.zeros((len(loader_test.dataset), num_classes))
 for j in range(len(final_updates)):
-	#print(j)
-	for k in swag_model.keys():
-		swag_model[k] = torch.normal(mean[k],std[k])
-	swag_model1.load_state_dict(swag_model)
-	test_acc, test_loss_value = test_inference(swag_model1, test_dataset, device,criterion, obj['test_batch_size'])
-	print('Sampled model Test accuracy is',test_acc)
-	print('Updating batch norm')
-	#swag_model.sample(scale=0.5, cov=args.cov_mat)
-	bn_update(loader_train, swag_model1)
-	sample_res = predict(loader_test, swag_model1, device)
-	predictions += sample_res["predictions"]
-	targets = sample_res["targets"]
-	predictions /= len(final_updates)
+  #print(j)
+  for k in swag_model.keys():
+    swag_model[k] = torch.normal(mean[k],std[k])
+  swag_model1.load_state_dict(swag_model)
+  test_acc, test_loss_value = test_inference(swag_model1, test_dataset, device,criterion, obj['test_batch_size'])
+  print('Sampled model Test accuracy is',test_acc)
+  print('Updating batch norm')
+  #swag_model.sample(scale=0.5, cov=args.cov_mat)
+  bn_update(loader_train, swag_model1)
+  sample_res = predict(loader_test, swag_model1, device)
+  predictions += sample_res["predictions"]
+  targets = sample_res["targets"]
+  predictions /= len(final_updates)
 
 swag_accuracies = np.mean(np.argmax(predictions, axis=1) == targets)*100
 swag_nlls = -np.mean(np.log(predictions[np.arange(predictions.shape[0]), targets] + eps))
 print('Final Accurcay is',swag_accuracies)
 print('Final Negative log likelihood is',swag_nlls)
 
-#	for epoch in range(obj['local_epoch'])
-#		if obj['is_attack'] == 1 and obj['attack_type'] == 'label_flip' and idx in idxs_byz_users:
-#			local_model = LocalUpdate(train_dataset, user_groups[idx], device, 
-#					obj['train_test_split'], obj['train_batch_size'], obj['test_batch_size'], obj['attack_type'], num_classes)
-#		else:
-#			local_model = LocalUpdate(train_dataset, user_groups[idx], device, 
-#					obj['train_test_split'], obj['train_batch_size'], obj['test_batch_size'])
+# for epoch in range(obj['local_epoch'])
+#   if obj['is_attack'] == 1 and obj['attack_type'] == 'label_flip' and idx in idxs_byz_users:
+#     local_model = LocalUpdate(train_dataset, user_groups[idx], device, 
+#         obj['train_test_split'], obj['train_batch_size'], obj['test_batch_size'], obj['attack_type'], num_classes)
+#   else:
+#     local_model = LocalUpdate(train_dataset, user_groups[idx], device, 
+#         obj['train_test_split'], obj['train_batch_size'], obj['test_batch_size'])
 #
-#		w, c_update, c_new, loss, local_size = local_model.local_opt(obj['local_optimizer'], obj['local_lr'], 
-#												epoch+1, idx+1, obj['batch_print_frequency'])
+#   w, c_update, c_new, loss, local_size = local_model.local_opt(obj['local_optimizer'], obj['local_lr'], 
+#                       epoch+1, idx+1, obj['batch_print_frequency'])
 #
-#		c[idx] = c_new # Updating the control variates in the main list for that client
-##	local_updates.append(copy.deepcopy(w))
-#	control_updates.append(c_update)
-#	local_losses.append(loss)
-##		#print(idx, np.unique(np.array([train_dataset.targets.numpy()[i] for i in user_groups[idx]])))
+#   c[idx] = c_new # Updating the control variates in the main list for that client
+##  local_updates.append(copy.deepcopy(w))
+# control_updates.append(c_update)
+# local_losses.append(loss)
+##    #print(idx, np.unique(np.array([train_dataset.targets.numpy()[i] for i in user_groups[idx]])))
 #
-#	train_loss_updated.append(sum(local_losses)/len(local_losses)) # Appending global training loss
+# train_loss_updated.append(sum(local_losses)/len(local_losses)) # Appending global training loss

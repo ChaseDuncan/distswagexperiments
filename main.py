@@ -75,7 +75,7 @@ parser.add_argument('--batch_print_frequency', type=int, default=100,
 		help="frequency after which batch results need to be printed to the console")
 parser.add_argument('--global_print_frequency', type=int, default=1, 
 		help="frequency after which global results need to be printed to the console")
-parser.add_argument('--global_store_frequency', type=int, default=10, 
+parser.add_argument('--global_store_frequency', type=int, default=1000, 
 		help="frequency after which global results should be written to CSV")
 parser.add_argument('--threshold_test_metric', type=float, default=0.95, 
 		help="threshold after which the code should end")
@@ -289,7 +289,6 @@ for epoch in range(args.global_epochs):
     print("Terminating as desired threshold for test metric reached...")
     break
  
-print(ep_times)
 is_phase1=False
 #for idx in idxs_users: # Training the local models
 idxs_users = np.random.choice(range(args.num_users), max(int(args.frac_users_phase2*args.num_users), 1), replace=False)
@@ -335,12 +334,15 @@ for k in global_weights.keys():
   std[k] = torch.zeros(global_weights[k].shape, dtype=global_weights[k].dtype).to(device)
 total_size=sum(local_sizes)
 print('will start calculating mean and variance')
+mom_time = time.time()
 for k in global_weights.keys():
   for i in range(len(final_updates)):
     a = torch.mul(final_updates[i][k], local_sizes[i]/total_size)
     mean[k] = ((i)*mean[k]+final_updates[i][k])/(i+1)
     std[k] = (i*std[k]+torch.mul(final_updates[i][k], final_updates[i][k]))/(i+1)
   std[k] = (torch.abs(std[k] - torch.mul(mean[k], mean[k]))) ** 0.5
+mom_time = time.time()-mom_time
+
 print('done!!')
 swag_model=copy.deepcopy(global_weights)
 swag_model1=copy.deepcopy(global_model)
@@ -391,7 +393,9 @@ torch.save(mean, os.path.join(args.dir, f'{args.exp_name}_mean_model.pt'))
 torch.save(std, os.path.join(args.dir, f'{args.exp_name}_std_model.pt'))
 
 np.savez(
-		os.path.join(args.dir, args.fname),
+		os.path.join(args.dir, args.fname), 
+        mom_time=mom_time,
+        ep_times=ep_times,
         predictions=predictions,
         targets=targets,
 		nnl=swag_nlls,

@@ -257,3 +257,33 @@ def bn_update(loader, model, verbose=False, subset=None, **kwargs):
             n += b
 
     model.apply(lambda module: _set_momenta(module, momenta))
+
+import argparse
+
+def pop_irrelevant_args(parser):
+  parser.add_argument('--seed', type=int, default=0, help="seed for running the experiments")
+  parser.add_argument('--sampling', type=str, default="iid", help="sampling technique for client data", choices=['iid', 'non_iid'])
+  parser.add_argument('--num_shards_user', type=int, default=2, help="number of classes to give to the user")
+  parser.add_argument('--train_test_split', type=float, default=1.0, help="train test split at the client end")
+  parser.add_argument('--train_batch_size', type=int, default=32, help="batch size for client training")
+  parser.add_argument('--test_batch_size', type=int, default=32, help="batch size for testing data")
+  parser.add_argument('--local_epochs_sampling', type=int, default=20, help="Number of local epochs without global aggregation (Phase2)")
+  parser.add_argument('--rank_param', type=int, default=4, help="Low rank approxmation parameter")
+  parser.add_argument('--num_samples', type=int, default=20, help="Number of samples in testing phase")
+  parser.add_argument('--frac_users_phase2', type=float, default=1.0, help="Number of clients to run phase 2")
+  parser.add_argument('--device', type=str, default="gpu", help="device for Torch", choices=['cpu', 'gpu'])
+  parser.add_argument('--momentum', type=float, default=0.5, help="momentum value for SGD")
+  parser.add_argument('--mu', type=float, default=0.1, help="proximal coefficient for FedProx")
+  parser.add_argument('--beta1', type=float, default=0.9, help="parameter for FedAvgM and FedAdam")
+  parser.add_argument('--beta2', type=float, default=0.999, help="parameter for FedAdam")
+  parser.add_argument('--eps', type=float, default=1e-4, help="epsilon for adaptive methods")
+  parser.add_argument('--frac_byz_clients', type=float, default=0.0, help="proportion of clients that are picked in a round")
+  parser.add_argument('--is_attack', type=int, default=0, help="whether to attack or not")
+  parser.add_argument('--attack_type', type=str, default='label_flip', help="attack to be used", choices=['fall', 'label_flip', 'little', 'gaussian'])
+  parser.add_argument('--fall_eps', type=float, default=-5.0, help="epsilon value to be used for the Fall Attack")
+  parser.add_argument('--little_std', type=float, default=1.5, help="standard deviation to be used for the Little Attack")
+  parser.add_argument('--is_defense', type=int, default=0, help="whether to defend or not")
+  parser.add_argument('--defense_type', type=str, default='median', help="aggregation to be used", choices=['median', 'krum', 'trimmed_mean'])
+  parser.add_argument('--trim_ratio', type=float, default=0.1, help="proportion of updates to trim for trimmed mean")
+  parser.add_argument('--multi_krum', type=int, default=5, help="number of clients to pick after krumming")
+

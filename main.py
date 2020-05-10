@@ -4,6 +4,7 @@ import copy
 import argparse
 import json
 import time
+import os
 
 import torch
 from torchvision import datasets, transforms
@@ -24,7 +25,8 @@ warnings.filterwarnings("ignore")
 ############################## Reading Arguments ##############################
 
 parser = argparse.ArgumentParser()
-
+parser.add_argument('--dir', type=str, default='./outputs', help="directory for savingouputs")
+parser.add_argument('--fname', type=str, default='test.npz', help="directory for savingouputs")
 parser.add_argument('--exp_name', type=str, default='', help="name of the experiment")
 parser.add_argument('--seed', type=int, default=0, help="seed for running the experiments")
 parser.add_argument('--data_source', type=str, default="CIFAR10", help="dataset to be used", choices=['MNIST', 'CIFAR10'])
@@ -60,6 +62,10 @@ parser.add_argument('--defense_type', type=str, default='median', help="aggregat
 parser.add_argument('--trim_ratio', type=float, default=0.1, help="proportion of updates to trim for trimmed mean")
 parser.add_argument('--multi_krum', type=int, default=5, help="number of clients to pick after krumming")
 parser.add_argument('--local_epochs_sampling', type=int, default=20, help="Number of local epochs without global aggregation (Phase2)")
+parser.add_argument('--rank_param', type=int, default=4, help="Low rank approxmation parameter")
+parser.add_argument('--num_samples', type=int, default=20, help="Number of samples in testing phase")
+parser.add_argument('--frac_users_phase2', type=float, default=1.0, help="Number of clients to run phase 2")
+
 
 parser.add_argument('--batch_print_frequency', type=int, default=100, help="frequency after which batch results need to be printed to the console")
 parser.add_argument('--global_print_frequency', type=int, default=1, help="frequency after which global results need to be printed to the console")
@@ -74,6 +80,7 @@ with open('config.json') as f:
 obj = vars(obj)
 obj.update(json_vars)
 print(obj)
+K=obj['rank_param']
 
 np.random.seed(obj['seed'])
 torch.manual_seed(obj['seed'])
@@ -253,10 +260,10 @@ for epoch in range(obj['global_epochs']):
   if test_accuracy[-1] >= obj['threshold_test_metric']:
     print("Terminating as desired threshold for test metric reached...")
     break
-
  
 is_phase1=False
 #for idx in idxs_users: # Training the local models
+idxs_users = np.random.choice(range(obj['num_users']), max(int(obj['frac_users_phase2']*obj['num_users']), 1), replace=False)
 final_updates=[]
 test_acc_phase2=[]
 test_loss_value_phase2=[]
@@ -316,46 +323,53 @@ test_acc, test_loss_value = test_inference(mean_model_test, test_dataset, device
 print('Initial Test accuracy is',test_acc)
 print('Starting testing phase')
 
+
 loader_train=torch.utils.data.DataLoader(train_dataset,batch_size=128,shuffle=True)
 loader_test=torch.utils.data.DataLoader(test_dataset,batch_size=128,shuffle=False)
 eps=1e-12
 num_classes=10
 predictions = np.zeros((len(loader_test.dataset), num_classes))
-for j in range(len(final_updates)):
-  #print(j)
-  for k in swag_model.keys():
-    swag_model[k] = torch.normal(mean[k],std[k])
-  swag_model1.load_state_dict(swag_model)
-  test_acc, test_loss_value = test_inference(swag_model1, test_dataset, device,criterion, obj['test_batch_size'])
-  print('Sampled model Test accuracy is',test_acc)
-  print('Updating batch norm')
-  #swag_model.sample(scale=0.5, cov=args.cov_mat)
-  bn_update(loader_train, swag_model1)
-  sample_res = predict(loader_test, swag_model1, device)
-  predictions += sample_res["predictions"]
-  targets = sample_res["targets"]
-  predictions /= len(final_updates)
+
+num_samples=obj['num_samples']
+for j in range(num_samples):
+	#print(j)
+	ep = torch.distributions.MultivariateNormal(torch.zeros(len(final_updates)), torch.diag(torch.ones(len(final_updates)))).rsample()
+	print('Sampling diagonal matrix')
+	for k in swag_model.keys():
+
+		swag_model[k] = torch.normal(mean[k],std[k])
+		
+	if K != 0 and K < len(final_updates):
+		print('Sampling low-rank matrix')
+		for i in range(len(final_updates)-K,len(final_updates),1):
+			for k in swag_model.keys():
+				swag_model[k] += (final_updates[i][k]-mean[k])*ep[i]/np.float(K-1)/np.sqrt(2)
+
+	swag_model1.load_state_dict(swag_model)
+	test_acc, test_loss_value = test_inference(swag_model1, test_dataset, device,criterion, obj['test_batch_size'])
+	print('Sampled model Test accuracy is',test_acc)
+	print('Updating batch norm')
+	#swag_model.sample(scale=0.5, cov=args.cov_mat)
+	bn_update(loader_train, swag_model1)
+	sample_res = predict(loader_test, swag_model1, device)
+	predictions += sample_res["predictions"]
+	targets = sample_res["targets"]
+	predictions /= num_samples
 
 swag_accuracies = np.mean(np.argmax(predictions, axis=1) == targets)*100
 swag_nlls = -np.mean(np.log(predictions[np.arange(predictions.shape[0]), targets] + eps))
 print('Final Accurcay is',swag_accuracies)
 print('Final Negative log likelihood is',swag_nlls)
 
-# for epoch in range(obj['local_epoch'])
-#   if obj['is_attack'] == 1 and obj['attack_type'] == 'label_flip' and idx in idxs_byz_users:
-#     local_model = LocalUpdate(train_dataset, user_groups[idx], device, 
-#         obj['train_test_split'], obj['train_batch_size'], obj['test_batch_size'], obj['attack_type'], num_classes)
-#   else:
-#     local_model = LocalUpdate(train_dataset, user_groups[idx], device, 
-#         obj['train_test_split'], obj['train_batch_size'], obj['test_batch_size'])
-#
-#   w, c_update, c_new, loss, local_size = local_model.local_opt(obj['local_optimizer'], obj['local_lr'], 
-#                       epoch+1, idx+1, obj['batch_print_frequency'])
-#
-#   c[idx] = c_new # Updating the control variates in the main list for that client
-##  local_updates.append(copy.deepcopy(w))
-# control_updates.append(c_update)
-# local_losses.append(loss)
-##    #print(idx, np.unique(np.array([train_dataset.targets.numpy()[i] for i in user_groups[idx]])))
-#
-# train_loss_updated.append(sum(local_losses)/len(local_losses)) # Appending global training loss
+if not(os.path.exists(obj["dir"])):
+    os.mkdir(obj["dir"])
+torch.save(mean,'results/%s_mean_model.pt'%(obj['exp_name']))
+torch.save(std,'results/%s_std_model.pt'%(obj['exp_name']))
+
+np.savez(
+		os.path.join(obj["dir"], obj["fname"]),
+        predictions=predictions,
+        targets=targets,
+		nnl=swag_nlls,
+    )
+

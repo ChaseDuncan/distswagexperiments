@@ -387,11 +387,11 @@ swag_nlls = -np.mean(np.log(predictions[np.arange(predictions.shape[0]), targets
 print('Final Accurcay is',swag_accuracies)
 print('Final Negative log likelihood is',swag_nlls)
 
-torch.save(mean, os.path.join(args["dir"], f'{args["exp_name"]}_mean_model.pt'))
-torch.save(std, os.path.join(args["dir"], f'{args["exp_name"]}_std_model.pt'))
+torch.save(mean, os.path.join(args.dir, f'{args.exp_name}_mean_model.pt'))
+torch.save(std, os.path.join(args.dir, f'{args.exp_name}_std_model.pt'))
 
 np.savez(
-		os.path.join(args["dir"], args["fname"]),
+		os.path.join(args.dir, args.fname),
         predictions=predictions,
         targets=targets,
 		nnl=swag_nlls,

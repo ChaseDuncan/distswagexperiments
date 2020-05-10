@@ -58,7 +58,7 @@ print(obj)
 if not(os.path.exists(obj["dir"])):
     os.makedirs(obj["dir"], exist_ok=True)
 
-with open(os.path.join(obj["dir"], obj["fname"]), "w") as f:
+with open(os.path.join(obj["dir"], 'command.sh'), "w") as f:
     f.write(" ".join(sys.argv))
     f.write("\n")
 		

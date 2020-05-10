@@ -60,6 +60,8 @@ parser.add_argument('--trim_ratio', type=float, default=0.1, help="proportion of
 parser.add_argument('--multi_krum', type=int, default=5, help="number of clients to pick after krumming")
 parser.add_argument('--local_epochs_sampling', type=int, default=20, help="Number of local epochs without global aggregation (Phase2)")
 parser.add_argument('--rank_param', type=int, default=4, help="Low rank approxmation parameter")
+parser.add_argument('--num_samples', type=int, default=20, help="Number of samples in testing phase")
+
 
 parser.add_argument('--batch_print_frequency', type=int, default=100, help="frequency after which batch results need to be printed to the console")
 parser.add_argument('--global_print_frequency', type=int, default=1, help="frequency after which global results need to be printed to the console")
@@ -403,10 +405,13 @@ loader_test=torch.utils.data.DataLoader(test_dataset,batch_size=128,shuffle=Fals
 eps=1e-12
 num_classes=10
 predictions = np.zeros((len(loader_test.dataset), num_classes))
-for j in range(len(final_updates)):
+num_samples=obj['num_samples']
+for j in range(num_samples):
 	#print(j)
 	ep = torch.distributions.MultivariateNormal(torch.zeros(len(final_updates)), torch.diag(torch.ones(len(final_updates)))).rsample()
+	print('Sampling diagonal matrix')
 	for k in swag_model.keys():
+
 		swag_model[k] = torch.normal(mean[k],std[k])
 		
 	if K != 0 and K < len(final_updates):
@@ -428,7 +433,7 @@ for j in range(len(final_updates)):
 	sample_res = predict(loader_test, swag_model1, device)
 	predictions += sample_res["predictions"]
 	targets = sample_res["targets"]
-	predictions /= len(final_updates)
+	predictions /= num_samples
 
 swag_accuracies = np.mean(np.argmax(predictions, axis=1) == targets)*100
 swag_nlls = -np.mean(np.log(predictions[np.arange(predictions.shape[0]), targets] + eps))

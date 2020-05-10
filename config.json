@@ -11,7 +11,13 @@
 	"model" : "MLP",
 	"criterion": "NLL",
 	"device" : "gpu",
-	"rank_param": 4,
+
+	"_comment": "rank_param must be smaller than num_users*frac_clients, rank_param=0 will sample the diagonal matrix only",
+	"rank_param": 4, 
+	
+	"_comment": "number of samples for computing bayesian averaging",
+	"num_samples": 20,
+	
 	"global_epochs" : 10,
 	"frac_clients" : 1.0,
 	"global_optimizer" : "fedavg",

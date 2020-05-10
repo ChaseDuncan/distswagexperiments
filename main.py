@@ -62,6 +62,7 @@ parser.add_argument('--multi_krum', type=int, default=5, help="number of clients
 parser.add_argument('--local_epochs_sampling', type=int, default=20, help="Number of local epochs without global aggregation (Phase2)")
 parser.add_argument('--rank_param', type=int, default=4, help="Low rank approxmation parameter")
 parser.add_argument('--num_samples', type=int, default=20, help="Number of samples in testing phase")
+parser.add_argument('--frac_users_phase2', type=float, default=1.0, help="Number of clients to run phase 2")
 
 
 parser.add_argument('--batch_print_frequency', type=int, default=100, help="frequency after which batch results need to be printed to the console")
@@ -337,6 +338,7 @@ for epoch in range(obj['global_epochs']):
  
 is_phase1=False
 #for idx in idxs_users: # Training the local models
+idxs_users = np.random.choice(range(obj['num_users']), max(int(obj['frac_users_phase2']*obj['num_users']), 1), replace=False)
 final_updates=[]
 test_acc_phase2=[]
 test_loss_value_phase2=[]
@@ -443,6 +445,8 @@ print('Final Negative log likelihood is',swag_nlls)
 
 if not(os.path.exists(obj["dir"])):
     os.mkdir(obj["dir"])
+torch.save(mean,'results/%s_mean_model.pt'%(obj['exp_name']))
+torch.save(std,'results/%s_std_model.pt'%(obj['exp_name']))
 
 np.savez(
 		os.path.join(obj["dir"], obj["fname"]),

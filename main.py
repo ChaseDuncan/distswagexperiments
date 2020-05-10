@@ -3,7 +3,7 @@ import pandas as pd
 import copy
 import argparse
 import json
-
+import os
 import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Dataset
@@ -23,7 +23,8 @@ warnings.filterwarnings("ignore")
 ############################## Reading Arguments ##############################
 
 parser = argparse.ArgumentParser()
-
+parser.add_argument('--dir', type=str, default='./outputs', help="directory for savingouputs")
+parser.add_argument('--fname', type=str, default='test.npz', help="directory for savingouputs")
 parser.add_argument('--exp_name', type=str, default='', help="name of the experiment")
 parser.add_argument('--seed', type=int, default=0, help="seed for running the experiments")
 parser.add_argument('--data_source', type=str, default="CIFAR10", help="dataset to be used", choices=['MNIST', 'CIFAR10'])
@@ -439,6 +440,17 @@ swag_accuracies = np.mean(np.argmax(predictions, axis=1) == targets)*100
 swag_nlls = -np.mean(np.log(predictions[np.arange(predictions.shape[0]), targets] + eps))
 print('Final Accurcay is',swag_accuracies)
 print('Final Negative log likelihood is',swag_nlls)
+
+if not(os.path.exists(obj["dir"])):
+    os.mkdir(obj["dir"])
+
+np.savez(
+		os.path.join(obj["dir"], obj["fname"]),
+        predictions=predictions,
+        targets=targets,
+		nnl=swag_nlls,
+    )
+
 
 #	for epoch in range(obj['local_epoch'])
 #		if obj['is_attack'] == 1 and obj['attack_type'] == 'label_flip' and idx in idxs_byz_users:

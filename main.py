@@ -23,7 +23,7 @@ import torchvision.models as models
 
 import warnings
 warnings.filterwarnings("ignore")
-
+START_TIME = time.time()
 ############################## Reading Arguments ##############################
 
 parser = argparse.ArgumentParser()
@@ -49,12 +49,12 @@ parser.add_argument('--fname', type=str, default='test.npz',
 parser.add_argument('--model', type=str, default="MLP", 
 		help="network structure to be used for training", 
 		choices=['LR', 'MLP', 'CNN', 'VGG16'])
-parser.add_argument('--data_source', type=str, default="MNIST", 
+parser.add_argument('--data_source', type=str, default="CIFAR10", 
 		help="dataset to be used", 
 		choices=['MNIST', 'CIFAR10'])
 parser.add_argument('--criterion', type=str, default="NLL", 
 		help="evaluation criterion", 
-		choices=['crossentrooy', 'NLL'])
+		choices=['crossentropy', 'NLL'])
 parser.add_argument('--frac_clients', type=float, default=1, 
 		help="proportion of clients to use for local updates")
 parser.add_argument('--global_optimizer', type=str, default='fedavg', 
@@ -317,7 +317,7 @@ for idx in idxs_users: # Training the local models
 
     if args.train_test_split != 1.0:
       msg = 'TrLoss (A) - {4:>6.4f} % , TrAcc - {5:>6.2f} %'
-      print(msg.format(epoch+1, test_loss[-1], test_accuracy[-1]*100.0, train_loss_updated[-1], 
+      print(msg.format(
               train_loss_all[-1], train_accuracy[-1]*100.0))
     else:
       print(msg.format(j, test_loss_value_phase2[-1], test_acc_phase2[-1]*100.0))
@@ -337,13 +337,13 @@ print('will start calculating mean and variance')
 mom_time = time.time()
 for k in global_weights.keys():
   for i in range(len(final_updates)):
-    a = torch.mul(final_updates[i][k], local_sizes[i]/total_size)
     mean[k] = ((i)*mean[k]+final_updates[i][k])/(i+1)
     std[k] = (i*std[k]+torch.mul(final_updates[i][k], final_updates[i][k]))/(i+1)
   std[k] = (torch.abs(std[k] - torch.mul(mean[k], mean[k]))) ** 0.5
 mom_time = time.time()-mom_time
 
 print('done!!')
+
 swag_model=copy.deepcopy(global_weights)
 swag_model1=copy.deepcopy(global_model)
 mean_model_test=copy.deepcopy(global_model)
@@ -400,4 +400,5 @@ np.savez(
         targets=targets,
 		nnl=swag_nlls,
     )
-
+RUN_TIME = (time.time() - START_TIME) / 60
+print(f'total runtime: {RUN_TIME} minutes.')

@@ -122,7 +122,8 @@ elif args.criterion == "crossentropy":
 
 ############################### Loading Dataset ###############################
 if args.data_source == 'MNIST':
-  data_dir = 'data/'
+  #data_dir = 'data/'
+  data_dir = '/dev/shm/'
   transformation = transforms.Compose([
     transforms.ToTensor(), 
     transforms.Normalize((0.1307,), (0.3081,))
@@ -132,7 +133,8 @@ if args.data_source == 'MNIST':
   
 elif args.data_source == 'CIFAR10':
   #CIFAR10 dataset
-  data_dir = 'data/'
+  #data_dir = 'data/'
+  data_dir = '/dev/shm/'
   transformation = transforms.Compose([
     transforms.RandomHorizontalFlip(),
     transforms.Resize(32),

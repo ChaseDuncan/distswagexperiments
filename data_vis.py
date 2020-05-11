@@ -48,6 +48,8 @@ def calibration_curve(npz_arr, num_bins):
     return out
 
 if __name__=='__main__':
+    ### This was used to loop over all the npz files to check if they had
+    # valid data in them.
     #import os
     #for root, dirs, files in os.walk("experiments/", topdown=False):
     #    for name in files:
@@ -55,26 +57,44 @@ if __name__=='__main__':
     #            print(os.path.join(root, name))
     #            out = calibration_curve(os.path.join(root, name), 20)
     #            conf_acc_diff = out['confidence'] - out['accuracy']
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--file', type=argparse.FileType('r'), nargs='+')
-    parser.add_argument('--num_bins', type=int, default=20)
-    args = parser.parse_args()
-    print(args.file)
+    
+    ### This was used to graph arbitrary number of files. Don't know how to
+    # make legend and what not.
+    #parser = argparse.ArgumentParser()
+    #parser.add_argument('--file', type=argparse.FileType('r'), nargs='+')
+    #parser.add_argument('--num_bins', type=int, default=20)
+    #args = parser.parse_args()
+    #print(args.file)
+
+    #fig, ax = plt.subplots()
+    #for f in args.file:
+    #    out = calibration_curve(f.name, args.num_bins)
+    #    conf_acc_diff = out['confidence'] - out['accuracy']
+    #    #print(out['confidence'])
+    #    #print(f'confidence: {out["confidence"]}')
+    #    #print(f'conf-accry: {conf_acc_diff}')
+
+    #    # Data for plotting
+    #    ax.plot(out['confidence'], conf_acc_diff, marker='^')
+    #    break
+
+    #ax.grid()
+    #ax.set(xlabel='Confidence', ylabel='Confidence - Accuracy',
+    #          title='Calibration')
+    #fig.savefig("test.png")
+    #plt.show()
 
     fig, ax = plt.subplots()
-    for f in args.file:
-        out = calibration_curve(f.name, args.num_bins)
-        conf_acc_diff = out['confidence'] - out['accuracy']
-        #print(out['confidence'])
-        #print(f'confidence: {out["confidence"]}')
-        #print(f'conf-accry: {conf_acc_diff}')
+    out = calibration_curve('experiments/VC-1-150-1-30-1-0/VC-1-150-1-30-1-0.npz', 20)
+    conf_acc_diff = out['confidence'] - out['accuracy']
+    ax.plot(out['confidence'], conf_acc_diff, marker='^', label='1 worker')
 
-        # Data for plotting
-        ax.plot(out['confidence'], conf_acc_diff, marker='^')
-        break
-
+    out = calibration_curve('experiments/VC-2-150-1-30-1-0/VC-2-150-1-30-1-0.npz', 20)
+    conf_acc_diff = out['confidence'] - out['accuracy']
+    ax.plot(out['confidence'], conf_acc_diff, marker='o', label='2 workers')
     ax.grid()
     ax.set(xlabel='Confidence', ylabel='Confidence - Accuracy',
               title='Calibration')
-    fig.savefig("test.png")
+    fig.savefig("1_vs_2.png")
+    plt.legend()
     plt.show()
